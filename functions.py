@@ -77,14 +77,14 @@ def plot_water_rdf(file_path, expt_file_path, timestep=2000, nbins=100):
     
     # Plot the RDF data (using only the 2nd and 3rd columns)
     plt.figure()
-    plt.plot(df_rdf.iloc[:, 1], df_rdf.iloc[:, 2], label='Obtained',linewidth='0.75')
+    plt.plot(df_rdf.iloc[:, 1], df_rdf.iloc[:, 2], label='Obtained TIP4P-Ew',linewidth='0.75')
     plt.xlabel('Distance (Å)')
     plt.xlim(0, 8)
     plt.ylim(0, 3.5)
     plt.ylabel(r'$g(r_{OO})$')
 
     # Plot experimental RDF with shading under the curve and no line
-    plt.fill_between(df_expt_rdf['distance'], df_expt_rdf['g(r_OO)'], alpha=0.5, color='gray', label='TIP4P-Ew')
+    plt.fill_between(df_expt_rdf['distance'], df_expt_rdf['g(r_OO)'], alpha=0.5, color='gray', label='Experimental')
 
     plt.legend()
     plt.show()
