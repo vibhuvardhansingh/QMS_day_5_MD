@@ -1,0 +1,7 @@
+## Joung & Cheatham ##
+set             type ${ion} charge  1 # ion+
+
+mass		${ion} 22.989
+pair_coeff      ${ion} ${ion}  0.1684375  2.184 
+
+group na type ${ion}

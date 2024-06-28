@@ -1,0 +1,94 @@
+# Setting the simulation parameters units and atom style
+
+units real
+atom_style full
+
+# Setting variable for molecule geometry
+variable O   equal 1 #Atom type
+variable H   equal 2 #Atom type
+variable OH_bond equal 1 #Bond type
+variable OH_angle equal 1 #Angle type
+#group h2o type ${O} ${H} # Grouping water atoms together
+variable        OM_dist equal 0.1250 # OM distance for TIP4P-ew
+variable ion equal 3
+
+# Setting variables for simulation run
+variable dt equal 0.5
+variable step equal 100
+variable steps equal 20000
+variable print_freq equal 100 
+variable temp equal 298
+variable press equal 1.0
+
+# Include the bond and angle style for water 
+bond_style      harmonic
+angle_style     harmonic
+
+pair_style      lj/cut/tip4p/long ${O} ${H} ${OH_bond} ${OH_angle} ${OM_dist} 9.0 9.0
+
+# Reading the equilibrated water data file we got from exercise 1
+read_data	equilibrated_water.data	extra/atom/types 1
+group           h2o type ${O} ${H}
+
+# Adding a Sodium ion to the cell at (x,y,z) = (10,10,10)
+create_atoms    ${ion} single 10 10 10
+
+# Extracting Sodium 
+include         na_jc.param
+
+
+# Choosing the non-bonded interaction pair style, includes both short and long range interactions
+# both having cutoffs as 9 Angstrom. lj/cut/tip4p/long pair style makes sure that the charge seen on
+# the oxygen atom is located at the M massless point
+# kspace_style defines the long range electrostatic interactions
+#pair_style      lj/cut/tip4p/long ${O} ${H} ${OH_bond} ${OH_angle} ${OM_dist} 9.0 9.0
+kspace_style    pppm/tip4p 1.0e-5 # 1.0e-5 defines the convergence criteria
+pair_modify	mix arithmetic 
+
+# Neighbor list settings
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+#fix 		mom all momentum 1 linear 1 1 1
+
+timestep	    ${dt}
+
+# Minimizing the system in the beginning so that the Sodium goes to optimal position before running dynamics
+dump            1 all custom 10 lammps.min.lammpstrj id type xu yu zu vx vy vz
+min_style       sd
+minimize        1.0e-4 1.0e-4 500 5000
+min_style       cg
+minimize        1.0e-4 1.0e-4 500 5000
+undump          1
+thermo          10
+reset_timestep	0
+
+# TIP4P Pair style needs SHAKE, which makes sure that the equilibrium bond distance and angle remains the same
+fix             myshake all shake 1e-5 1 0 m 1.0079 a ${OH_angle} 
+
+# Initialize the velocities such that the average temperature they output is 300K
+velocity	    all create ${temp} 12345678 dist uniform
+
+# computing rdf
+compute         myRDF all rdf 100 ${O} ${O} ${O} ${ion} 
+# 100 bins, pairs atom type
+fix             rdfout all ave/time 1 1 100 c_myRDF[*] file rdf.out mode vector ave running 
+# performs time average over all rdfs, averaged every 100 steps, 'running' denotes cumulative average (allows us to plot the last output rdf)
+
+compute         WaterMSD h2o msd com yes average yes
+fix             water_msd_print all print ${print_freq} "$(time) $(c_WaterMSD[1]) $(c_WaterMSD[2]) $(c_WaterMSD[3]) $(c_WaterMSD[4])" file water_msd.out screen no title "# time msd_x msd_y msd_z msd"
+
+compute NaMSD na msd com yes average yes
+fix             na_msd_print all print ${print_freq} "$(time) $(c_NaMSD[1]) $(c_NaMSD[2]) $(c_NaMSD[3]) $(c_NaMSD[4])" file na_msd.out screen no title "# time msd_x msd_y msd_z msd"
+
+fix             equil all npt temp ${temp} ${temp} 100.0 iso ${press} ${press} $(100*dt)
+dump            1 all custom ${step} traj.equil.lammpstrj id type xu yu zu vx vy vz
+
+thermo_style    multi
+fix             thermo_print all print ${print_freq} "$(step) $(time) $(temp) $(etotal) $(ke) $(pe) $(enthalpy) $(density) $(lx) $(ly) $(lz) $(vol) $(pxx) $(pyy) $(pzz) $(press)" file thermo.out screen no title "# step time temp etotal ke pe enthalpy density lx ly lz vol pxx pyy pzz press"
+
+thermo 	        ${step}
+run 	        ${steps} # running for a total time of  " " ps ??
+unfix           equil
+undump          1
+write_data 	    equilibration_na_water.data nocoeff

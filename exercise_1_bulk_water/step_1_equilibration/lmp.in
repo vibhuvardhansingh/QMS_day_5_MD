@@ -1,0 +1,101 @@
+# Setting the simulation parameters units and atom style
+units real
+atom_style full
+
+# Setting up the initial box dimensions
+region box block -15 15 -15 15 -15 15
+create_box 2 box bond/types 1 angle/types 1 &
+            extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2 
+
+# Setting variable for molecule geometry
+variable O   equal 1 #Atom type
+variable H   equal 2 #Atom type
+variable OH_bond equal 1 #Bond type
+variable OH_angle equal 1 #Angle type
+#group h2o type ${O} ${H} # Grouping water atoms together
+variable        OM_dist equal 0.1250 # OM distance for TIP4P-ew
+
+# Setting variables for simulation run
+variable dt equal 0.5
+variable step equal 100
+variable steps equal 20000
+variable print_freq equal 100 
+variable temp equal 298
+variable press equal 1.0
+
+# Include the bond and angle style for water 
+bond_style      harmonic
+angle_style     harmonic
+
+# Importing the water structure
+molecule	water tip3p.mol 
+
+# Randomly creating 300 water molecules in the box
+create_atoms	0 random 300 34564 NULL mol water 25367 overlap 1.2
+
+# Choosing the non-bonded interaction pair style, includes both short and long range interactions
+# both having cutoffs as 9 Angstrom. lj/cut/tip4p/long pair style makes sure that the charge seen on
+# the oxygen atom is located at the M massless point
+# kspace_style defines the long range electrostatic interactions
+
+pair_style      lj/cut/tip4p/long ${O} ${H} ${OH_bond} ${OH_angle} ${OM_dist} 9.0 9.0
+kspace_style    pppm/tip4p 1.0e-5 # 1.0e-5 defines the convergence criteria
+# Including TIP4p-ew parameters for water (masses, charges, bond and angle equilibrium distances)
+include         tip4p-ew.param
+
+
+#pair_style      lj/cut/tip4p/long ${O} ${H} ${OH_bond} ${OH_angle} ${OM_dist} 9.0 9.0
+#kspace_style    pppm/tip4p 1.0e-5 # 1.0e-5 defines the convergence criteria
+pair_modify	mix arithmetic 
+
+# Neighbor list settings
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# Minimize the initial structure
+dump            1 all custom 10 lammps.min.lammpstrj id type xu yu zu vx vy vz
+#fix     thermo_print all print ${print_freq} "$(step) $(temp) $(etotal) $(ke) $(pe) $(enthalpy) $(density) $(lx) $(ly) $(lz) $(vol) $(pxx) $(pyy) $(pzz) $(press)" file thermo.out screen no title "# step temp etotal ke pe enthalpy density lx ly lz vol pxx pyy pzz press"
+min_style	sd
+minimize        1.0e-4 1.0e-4 500 5000
+min_style	cg
+minimize	1.0e-4 1.0e-4 500 5000
+undump  1            
+thermo	10
+reset_timestep 0
+# Initialize the velocities such that the average temperature of system remains 300K
+velocity	h2o create ${temp} 12345678 dist uniform
+
+# TIP4P Pair style needs SHAKE, which makes sure that the
+# equilibrium bond distance and angle remains the same
+fix             myshake all shake 1e-5 1 0 m 1.0079 a ${OH_angle} 
+
+#fix 		mom all momentum 1 linear 1 1 1 
+# equilibrium bond distance and angle remains the same
+timestep	${dt}
+
+compute         myRDF all rdf 100 ${O} ${O} # 100 bins, pairs atom type
+fix             rdfout all ave/time 1 1 100 c_myRDF[*] file rdf.out mode vector ave running # performs time average over all rdfs, averaged every 100 steps, 'running' denotes cumulative average (plotting the last output rdf will provide the rdf averaged over all configurations)
+
+# Computing MSD
+compute         WaterMSD h2o msd com yes average yes
+fix             water_msd_print all print ${print_freq} "$(time) $(c_WaterMSD[1]) $(c_WaterMSD[2]) $(c_WaterMSD[3]) $(c_WaterMSD[4])" file water_msd.out screen no title "# time msd_x msd_y msd_z msd"
+
+# Running npt simulation at 298K and 1atm pressure
+fix             equil all npt temp ${temp} ${temp} 100.0 iso ${press} ${press} $(100*dt) tloop 10 ploop 10
+
+dump            1 all custom ${step} traj.equil.lammpstrj id type xu yu zu vx vy vz
+
+# setting thermodynamic output style
+thermo_style	multi
+
+# printing the thermodynamic data
+fix             thermo_print all print ${print_freq} "$(step) $(time) $(temp) $(etotal) $(ke) $(pe) $(enthalpy) $(density) $(lx) $(ly) $(lz) $(vol) $(pxx) $(pyy) $(pzz) $(press)" file thermo.out screen no title "# step time temp etotal ke pe enthalpy density lx ly lz vol pxx pyy pzz press"
+
+# defining the output frequency of thermodynamic data and 
+thermo 	${step}
+run 	${steps} # running for a total time of  " " ps ??
+unfix  equil
+undump 1
+
+# Outputting the final data file that can be used for future calculations
+write_data 	equilibrated_water.data pair ij

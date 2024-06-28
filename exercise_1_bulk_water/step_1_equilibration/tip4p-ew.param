@@ -1,0 +1,13 @@
+set             type ${O} charge  -1.04844
+set             type ${H} charge   0.52422
+
+mass            ${O} 15.9994
+mass            ${H} 1.0079
+
+bond_coeff      ${OH_bond} 5000.0  0.9572
+angle_coeff     ${OH_angle} 5000.0  104.52
+
+pair_coeff      ${O} ${O}  0.162750     3.16435
+pair_coeff      ${H} ${H}  0.000000     1.0000
+
+group h2o type ${O} ${H}

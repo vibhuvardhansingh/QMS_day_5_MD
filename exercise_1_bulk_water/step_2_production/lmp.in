@@ -1,0 +1,36 @@
+units       real
+atom_style  full
+
+# Setting output settings
+variable print_freq equal 100 
+
+variable O   equal 1 #Atom type
+variable H   equal 2 #Atom type
+variable OH_bond equal 1 #Bond type
+variable OH_angle equal 1 #Angle type
+variable        OM_dist equal 0.1250 # OM distance for TIP4P-ew
+
+pair_style      lj/cut/tip4p/long ${O} ${H} ${OH_bond} ${OH_angle} ${OM_dist} 9.0 9.0
+bond_style      harmonic
+angle_style     harmonic
+read_data       equilibrated_water.data
+
+group h2o type ${O} ${H}
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+fix             myshake all shake 1e-5 1 0 m 1.0079 a ${OH_angle}
+
+kspace_style    pppm/tip4p 1.0e-5
+pair_modify     mix arithmetic
+
+# Computing RDF
+compute         myRDF all rdf 100 ${O} ${O} # 100 bins, pairs atom type
+fix             rdfout all ave/time 1 1 100 c_myRDF[*] file rdf.out mode vector ave running # performs time average over all rdfs, averaged every 100 steps, 'running' denotes cumulative average (plotting the last output rdf will provide the rdf averaged over all configurations)
+
+# Computing MSD
+compute         WaterMSD h2o msd com yes average yes
+fix             water_msd_print all print ${print_freq} "$(time) $(c_WaterMSD[1]) $(c_WaterMSD[2]) $(c_WaterMSD[3]) $(c_WaterMSD[4])" file water_msd.out screen no title "# time msd_x msd_y msd_z msd"
+
+rerun           traj.equil.lammpstrj dump x y z

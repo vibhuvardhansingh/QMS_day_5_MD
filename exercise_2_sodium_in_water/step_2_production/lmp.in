@@ -1,0 +1,45 @@
+units       real
+atom_style  full
+
+# Setting output settings
+variable print_freq equal 100 
+
+# empty potential, specifies 9 so RDF goes to cutoff of 9
+variable O   equal 1 #Atom type
+variable H   equal 2 #Atom type
+variable ion equal 3 #Atom type
+variable OH_bond equal 1 #Bond type
+variable OH_angle equal 1 #Angle type
+variable        OM_dist equal 0.1250 # OM distance for TIP4P-ew
+
+pair_style      lj/cut/tip4p/long ${O} ${H} ${OH_bond} ${OH_angle} ${OM_dist} 9.0 9.0
+bond_style      harmonic
+angle_style     harmonic
+
+read_data       long_run_water.data
+group h2o type ${O} ${H}
+group na type ${ion}
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+fix             myshake all shake 1e-5 1 0 m 1.0079 a ${OH_angle}
+
+#include		tip4p-ew.param
+#include		na_jc.param
+
+kspace_style    pppm/tip4p 1.0e-5
+pair_modify     mix arithmetic
+
+compute         myRDF all rdf 100 ${O} ${O} ${O} ${ion} 
+# 100 bins, pairs atom type
+fix             rdfout all ave/time 1 1 100 c_myRDF[*] file rdf.out mode vector ave running 
+# performs time average over all rdfs, averaged every 100 steps, 'running' denotes cumulative average (allows us to plot the last output rdf)
+
+compute         WaterMSD h2o msd com yes average yes
+fix             water_msd_print all print ${print_freq} "$(time) $(c_WaterMSD[1]) $(c_WaterMSD[2]) $(c_WaterMSD[3]) $(c_WaterMSD[4])" file water_msd.out screen no title "# time msd_x msd_y msd_z msd"
+
+compute NaMSD na msd com yes average yes
+fix             na_msd_print all print ${print_freq} "$(time) $(c_NaMSD[1]) $(c_NaMSD[2]) $(c_NaMSD[3]) $(c_NaMSD[4])" file na_msd.out screen no title "# time msd_x msd_y msd_z msd"
+
+rerun           traj.equil.lammpstrj dump x y z
